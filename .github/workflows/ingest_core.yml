@@ -17,7 +17,7 @@ jobs:
         env:
           CORE_PAT: ${{ secrets.CORE_PAT }}
         run: |
-          git clone https://x-access-token:${CORE_PAT}@github.com/ТВОЙ_АККАУНТ/prognostika-core.git
+          git clone https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git
           cd prognostika-core
           echo "✅ cloned private core"
 
