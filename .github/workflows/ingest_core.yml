@@ -33,11 +33,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run ingestion
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           cd prognostika-core
-          python orchestrator/run_ingestion.py
+          HF_TOKEN="${{ secrets.HF_TOKEN }}" python orchestrator/run_ingestion.py
 
       - name: Commit & push updates back
         env:
