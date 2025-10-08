@@ -32,10 +32,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run ingestion
-        run: |
-          cd prognostika-core
-          HF_TOKEN="${{ secrets.HF_TOKEN }}" python orchestrator/run_ingestion.py
+       - name: Run ingestion
+         run: |
+            cd prognostika-core
+            HF_TOKEN="${{ secrets.HF_TOKEN }}" python -m orchestrator.run_ingestion
 
       - name: Commit & push updates back
         env:
