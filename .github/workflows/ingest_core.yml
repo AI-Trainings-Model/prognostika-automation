@@ -1,51 +1,12 @@
-name: Prognostika ingestion
-
-on:
-  workflow_dispatch: {}
-  schedule:
-    - cron: "15 16 * * *"   # ежедневно 18:15 Europe/Berlin (16:15 UTC зимой)
-
-permissions:
-  contents: write
-
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout (this repo)
-        uses: actions/checkout@v4
-
-      - name: Clone PRIVATE core
-        env:
-          CORE_PAT: ${{ secrets.CORE_PAT }}
-        run: |
-          git clone https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git
-          cd prognostika-core
-          git status
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install deps
-        run: |
-          cd prognostika-core
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run ingestion
-        run: |
-          cd prognostika-core
-          HF_TOKEN="${{ secrets.HF_TOKEN }}" python -m orchestrator.run_ingestion
-
-      - name: Commit & push WATERMARKS + log back
-        env:
-          CORE_PAT: ${{ secrets.CORE_PAT }}
-        run: |
-          cd prognostika-core
-          git config user.email "bot@prognostika.ai"
-          git config user.name  "Prognostika Bot"
-          git add manifests/checkpoints/WATERMARKS.jsonl manifests/tasks/ingestion_log.jsonl || true
-          git commit -m "[bot] update WATERMARKS and ingestion_log" || echo "nothing to commit"
-          git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main
+- name: Commit & push progress
+    env:
+      CORE_PAT: ${{ secrets.CORE_PAT }}
+    run: |
+      cd prognostika-core
+      git config user.email "bot@prognostika.ai"
+      git config user.name "Prognostika Bot"
+      git pull --rebase https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git main || true
+      git add manifests/checkpoints/RETRO_PROGRESS.jsonl manifests/checkpoints/WATERMARKS.jsonl || true
+      git commit -m "[retro] progress update" || echo "nothing to commit"
+      git push --force https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main
+      echo "✅ Progress pushed to prognostika-core"
