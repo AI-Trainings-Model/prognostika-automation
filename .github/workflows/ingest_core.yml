@@ -1,25 +1,27 @@
-name: Prognostika ingestion (automation)
+name: Prognostika ingestion
 
 on:
   workflow_dispatch: {}
   schedule:
-    # каждый день в 18:15 по Берлину (16:15 UTC зимой)
-    - cron: "15 16 * * *"
+    - cron: "15 16 * * *"   # ежедневно 18:15 Europe/Berlin (16:15 UTC зимой)
+
+permissions:
+  contents: write
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout automation repo
+      - name: Checkout (this repo)
         uses: actions/checkout@v4
 
-      - name: Clone private core repo
+      - name: Clone PRIVATE core
         env:
           CORE_PAT: ${{ secrets.CORE_PAT }}
         run: |
           git clone https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git
           cd prognostika-core
-          echo "✅ cloned private core"
+          git status
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -32,18 +34,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-       - name: Run ingestion
-         run: |
-            cd prognostika-core
-            HF_TOKEN="${{ secrets.HF_TOKEN }}" python -m orchestrator.run_ingestion
+      - name: Run ingestion
+        run: |
+          cd prognostika-core
+          HF_TOKEN="${{ secrets.HF_TOKEN }}" python -m orchestrator.run_ingestion
 
-      - name: Commit & push updates back
+      - name: Commit & push WATERMARKS + log back
         env:
           CORE_PAT: ${{ secrets.CORE_PAT }}
         run: |
           cd prognostika-core
           git config user.email "bot@prognostika.ai"
-          git config user.name "Prognostika Bot"
+          git config user.name  "Prognostika Bot"
           git add manifests/checkpoints/WATERMARKS.jsonl manifests/tasks/ingestion_log.jsonl || true
           git commit -m "[bot] update WATERMARKS and ingestion_log" || echo "nothing to commit"
           git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main
