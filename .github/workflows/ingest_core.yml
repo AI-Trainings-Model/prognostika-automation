@@ -1,10 +1,9 @@
-name: Prognostika ingestion (automation)
+name: Prognostika ingestion (core sync)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
   schedule:
-    # каждый день в 18:15 по Берлину (16:15 UTC зимой)
-    - cron: "15 16 * * *"
+    - cron: "15 16 * * *"  # Каждый день 18:15 по Берлину (16:15 UTC зимой)
 
 jobs:
   run:
@@ -46,9 +45,9 @@ jobs:
           git config user.email "bot@prognostika.ai"
           git config user.name "Prognostika Bot"
           git fetch origin main
-          git reset --hard origin/main
-          git add manifests/checkpoints/RETRO_PROGRESS.jsonl manifests/checkpoints/WATERMARKS.jsonl manifests/tasks/universe_registry.jsonl || true
-          git commit -m "[auto] registry/progress update" || echo "nothing to commit"
+          git checkout main
           git pull --rebase https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git main || true
-git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main --force
+          git add manifests/checkpoints/RETRO_PROGRESS.json manifests/checkpoints/WATERMARKS.json manifests/stacks/universe_registry.json || true
+          git commit -m "[bot] progress update" || echo "nothing to commit"
+          git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main --force
           echo "✅ Progress forcibly pushed to prognostika-core"
