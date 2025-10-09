@@ -1,4 +1,44 @@
-- name: Commit & push progress
+name: Prognostika ingestion (automation)
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # каждый день в 18:15 по Берлину (16:15 UTC зимой)
+    - cron: "15 16 * * *"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout automation repo
+        uses: actions/checkout@v4
+
+      - name: Clone private core repo
+        env:
+          CORE_PAT: ${{ secrets.CORE_PAT }}
+        run: |
+          git clone https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git
+          echo "✅ cloned private core"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          cd prognostika-core
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ingestion
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          cd prognostika-core
+          python orchestrator/run_ingestion.py
+
+      - name: Commit & push progress
         env:
           CORE_PAT: ${{ secrets.CORE_PAT }}
         run: |
