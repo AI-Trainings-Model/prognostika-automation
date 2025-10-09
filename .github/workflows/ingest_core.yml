@@ -1,13 +1,13 @@
 - name: Commit & push progress
-    env:
-      CORE_PAT: ${{ secrets.CORE_PAT }}
-    run: |
-      cd prognostika-core
-      git config user.email "bot@prognostika.ai"
-      git config user.name "Prognostika Bot"
-      git fetch origin main
-      git reset --hard origin/main
-      git add manifests/checkpoints/RETRO_PROGRESS.jsonl manifests/checkpoints/WATERMARKS.jsonl manifests/tasks/universe_registry.jsonl || true
-      git commit -m "[auto] registry/progress update" || echo "nothing to commit"
-      git push --force https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main
-      echo "✅ Progress forcibly pushed to prognostika-core"
+        env:
+          CORE_PAT: ${{ secrets.CORE_PAT }}
+        run: |
+          cd prognostika-core
+          git config user.email "bot@prognostika.ai"
+          git config user.name "Prognostika Bot"
+          git fetch origin main
+          git reset --hard origin/main
+          git add manifests/checkpoints/RETRO_PROGRESS.jsonl manifests/checkpoints/WATERMARKS.jsonl manifests/tasks/universe_registry.jsonl || true
+          git commit -m "[auto] registry/progress update" || echo "nothing to commit"
+          git push --force https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main
+          echo "✅ Progress forcibly pushed to prognostika-core"
