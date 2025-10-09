@@ -3,7 +3,7 @@ name: Prognostika ingestion (core sync)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 16 * * *"  # Каждый день 18:15 по Берлину (16:15 UTC зимой)
+    - cron: "15 16 * * *" # Каждый день 18:15 по Берлину (16:15 UTC зимой)
 
 jobs:
   run:
@@ -37,7 +37,7 @@ jobs:
           cd prognostika-core
           python -m orchestrator.run_ingestion
 
-      - name: Commit & push progress
+      - name: Commit & push progress (auto-heal)
         env:
           CORE_PAT: ${{ secrets.CORE_PAT }}
         run: |
@@ -46,8 +46,16 @@ jobs:
           git config user.name "Prognostika Bot"
           git fetch origin main
           git checkout main
-          git pull --rebase https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git main || true
+          git pull https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git main || true
+          
           git add manifests/checkpoints/RETRO_PROGRESS.json manifests/checkpoints/WATERMARKS.json manifests/stacks/universe_registry.json || true
-          git commit -m "[bot] progress update" || echo "nothing to commit"
-          git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main --force
-          echo "✅ Progress forcibly pushed to prognostika-core"
+          git commit -m "[bot] progress update $(date -u +"%Y-%m-%dT%H:%M:%SZ")" || echo "nothing to commit"
+          
+          # первая попытка — нормальный push
+          git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main || (
+            echo "⚠️ Fast-forward error, retrying with rebase"
+            git pull --rebase https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git main || true
+            git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main --force
+          )
+
+          echo "✅ Progress successfully pushed to prognostika-core"
