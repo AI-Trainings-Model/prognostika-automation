@@ -1,164 +1,61 @@
-name: Prognostika – full auto (discover → retro → daily)
+name: Discover universe (auto-extend)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "5 2 * * *" # 02:05 UTC discover universe
-    - cron: "20 2 * * *" # 02:20 UTC retro plan + backfill
-    - cron: "15 16 * * 1-5" # 16:15 UTC (weekdays) daily increment
-
-permissions:
-  contents: write
+    - cron: "05 16 * * *" # каждый день ~18:05 по Берлину (16:05 UTC зимой)
 
 jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Clone PRIVATE core
+      - name: Checkout automation repo
+        uses: actions/checkout@v4
+
+      - name: Clone private core repo
         env:
           CORE_PAT: ${{ secrets.CORE_PAT }}
         run: |
           git clone https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git
-      - uses: actions/setup-python@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Install deps
         run: |
           cd prognostika-core
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
       - name: Discover universe (auto-extend)
         run: |
           cd prognostika-core
           python -m orchestrator.discover_universe
-      - name: Commit registry update
+
+      - name: Commit registry update (auto-heal)
         env:
           CORE_PAT: ${{ secrets.CORE_PAT }}
         run: |
           cd prognostika-core
           git config user.email "bot@prognostika.ai"
           git config user.name "Prognostika Bot"
+          git fetch origin main
+          git checkout main
+          git pull https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git main || true
+
+          # возможные артефакты discover/plan — добавляем все варианты
           git add manifests/registry/symbols_master.jsonl || true
-          git commit -m "[bot] universe discovery" || echo "nothing to commit"
-          git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main
+          git add manifests/tasks/universe_registry.jsonl manifests/tasks/backlog.jsonl || true
+          git add manifests/stacks/universe_registry.json || true
 
-  plan:
-    needs: discover
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.expose.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Clone PRIVATE core
-        env:
-          CORE_PAT: ${{ secrets.CORE_PAT }}
-        run: |
-          git clone https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: |
-          cd prognostika-core
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Build retro plan (auto)
-        env:
-          MAX_SYMBOLS_PER_RUN: "20"
-          DEFAULT_SOURCE: "stooq"
-        run: |
-          cd prognostika-core
-          python -m orchestrator.plan_retro
-          cat manifests/tasks/retro_plan.matrix.json
-      - name: Expose matrix
-        id: expose
-        run: |
-          cd prognostika-core
-          echo "matrix=$(cat manifests/tasks/retro_plan.matrix.json)" >> "$GITHUB_OUTPUT"
-      - name: Commit plan snapshot
-        env:
-          CORE_PAT: ${{ secrets.CORE_PAT }}
-        run: |
-          cd prognostika-core
-          git config user.email "bot@prognostika.ai"
-          git config user.name "Prognostika Bot"
-          git add manifests/tasks/retro_plan.matrix.json || true
-          git commit -m "[retro] plan snapshot" || echo "nothing to commit"
-          git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main
+          git commit -m "[bot] update universe registry $(date -u +"%Y-%m-%dT%H:%M:%SZ")" || echo "nothing to commit"
 
-  backfill:
-    needs: plan
-    if: ${{ fromJson(needs.plan.outputs.matrix).include && fromJson(needs.plan.outputs.matrix).include[0] != null }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Clone PRIVATE core
-        env:
-          CORE_PAT: ${{ secrets.CORE_PAT }}
-        run: |
-          git clone https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: |
-          cd prognostika-core
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Retro backfill (per symbol)
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          cd prognostika-core
-          python -m orchestrator.retro_backfill \
-            --symbol "${{ matrix.symbol }}" \
-            --exchange "${{ matrix.exchange }}" \
-            --source "${{ matrix.source }}"
-      - name: Commit progress
-        env:
-          CORE_PAT: ${{ secrets.CORE_PAT }}
-        run: |
-          cd prognostika-core
-          git config user.email "bot@prognostika.ai"
-          git config user.name "Prognostika Bot"
-          git add manifests/checkpoints/RETRO_PROGRESS.jsonl || true
-          git commit -m "[retro] progress" || echo "nothing to commit"
-          git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main
-
-  daily_increment:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Clone PRIVATE core
-        env:
-          CORE_PAT: ${{ secrets.CORE_PAT }}
-        run: |
-          git clone https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: |
-          cd prognostika-core
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Incremental (today’s bar only)
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          cd prognostika-core
-          python -m orchestrator.daily_increment
-      - name: Commit watermarks
-        env:
-          CORE_PAT: ${{ secrets.CORE_PAT }}
-        run: |
-          cd prognostika-core
-          git config user.email "bot@prognostika.ai"
-          git config user.name "Prognostika Bot"
-          git add manifests/checkpoints/WATERMARKS.jsonl || true
-          git commit -m "[bot] daily watermarks" || echo "nothing to commit"
-          git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main
+          # push с авто-восстановлением при non-fast-forward
+          git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main || (
+            echo "⚠️ Fast-forward error, retrying with rebase"
+            git pull --rebase https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git main || true
+            git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main --force
+          )
+          echo "✅ registry pushed"
