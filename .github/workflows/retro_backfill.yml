@@ -37,23 +37,25 @@ jobs:
 import json, pathlib
 root = pathlib.Path('.')
 src = root/'manifests'/'registry'/'symbols_master.jsonl'
-items=[]
+items = []
 if src.exists():
     for line in src.read_text(encoding='utf-8').splitlines():
         if not line.strip():
             continue
-        obj=json.loads(line)
+        obj = json.loads(line)
         if not obj.get('active', True):
             continue
         items.append({"symbol": obj["symbol"], "exchange": obj.get("exchange","")})
+
 # батчим по 6 тикеров
-BATCH=6
-batches=[items[i:i+BATCH] for i in range(0,len(items),BATCH)]
+BATCH = 6
+batches = [items[i:i+BATCH] for i in range(0, len(items), BATCH)]
+
 out = root/'manifests'/'tasks'/'retro_plan_matrix.json'
 out.write_text(json.dumps({"include": batches}, ensure_ascii=False, indent=2), encoding='utf-8')
 print(f"✅ Made {len(batches)} batches with total {len(items)} symbols")
 PY
-          echo "matrix=$(cat prognostika-core/manifests/tasks/retro_plan_matrix.json)" >> $GITHUB_OUTPUT
+          echo "matrix=$(cat manifests/tasks/retro_plan_matrix.json)" >> $GITHUB_OUTPUT
 
   backfill:
     needs: plan
@@ -91,15 +93,14 @@ PY
           MATRIX_JSON='${{ toJson(matrix.include) }}'
           python - <<'PY'
 import os, json, subprocess, sys, time, random
-batch = json.loads(os.environ.get("MATRIX_JSON","[]"))
-# лёгкая пауза, чтобы не бить источник синхронно множеством раннеров
-time.sleep(random.randint(1,5))
+batch = json.loads(os.environ.get("MATRIX_JSON", "[]"))
+time.sleep(random.randint(1,5)) # рассинхрон запросов к источнику
 for row in batch:
     sym = row.get("symbol")
     ex = row.get("exchange","")
     if not sym:
         continue
-    cmd = ["python","-m","orchestrator.retro_backfill","--symbol",sym]
+    cmd = ["python","-m","orchestrator.retro_backfill","--symbol", sym]
     if ex:
         cmd += ["--exchange", ex]
     print("RUN:", " ".join(cmd), flush=True)
