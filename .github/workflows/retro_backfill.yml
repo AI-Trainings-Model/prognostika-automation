@@ -1,13 +1,11 @@
-name: Retro backfill (all symbols, batched)
+name: Retro backfill (simple & safe)
 
 on:
   workflow_dispatch:
 
 jobs:
-  plan:
+  retro:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.make.outputs.matrix }}
     steps:
       - name: Checkout automation repo
         uses: actions/checkout@v4
@@ -29,103 +27,33 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Build plan matrix (safe JSON)
-        id: make
+      - name: Build plan
         run: |
           cd prognostika-core
-          python - <<'PY'
-import json, pathlib
-root = pathlib.Path('.')
-src = root/'manifests'/'registry'/'symbols_master.jsonl'
-items = []
-if src.exists():
-    for line in src.read_text(encoding='utf-8').splitlines():
-        if not line.strip():
-            continue
-        obj = json.loads(line)
-        if not obj.get('active', True):
-            continue
-        items.append({"symbol": obj["symbol"], "exchange": obj.get("exchange","")})
+          python -m orchestrator.plan_build
 
-# батчим по 6 тикеров
-BATCH = 6
-batches = [items[i:i+BATCH] for i in range(0, len(items), BATCH)]
-
-out = root/'manifests'/'tasks'/'retro_plan_matrix.json'
-out.write_text(json.dumps({"include": batches}, ensure_ascii=False, indent=2), encoding='utf-8')
-print(f"✅ Made {len(batches)} batches with total {len(items)} symbols")
-PY
-          echo "matrix=$(cat manifests/tasks/retro_plan_matrix.json)" >> $GITHUB_OUTPUT
-
-  backfill:
-    needs: plan
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
-      max-parallel: 3
-    steps:
-      - name: Checkout automation repo
-        uses: actions/checkout@v4
-
-      - name: Clone private core repo
-        env:
-          CORE_PAT: ${{ secrets.CORE_PAT }}
-        run: |
-          git clone https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install deps
-        run: |
-          cd prognostika-core
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Retro backfill (per batch)
+      - name: Backfill all (by plan)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           cd prognostika-core
-          MATRIX_JSON='${{ toJson(matrix.include) }}'
-          python - <<'PY'
-import os, json, subprocess, sys, time, random
-batch = json.loads(os.environ.get("MATRIX_JSON", "[]"))
-time.sleep(random.randint(1,5)) # рассинхрон запросов к источнику
-for row in batch:
-    sym = row.get("symbol")
-    ex = row.get("exchange","")
-    if not sym:
-        continue
-    cmd = ["python","-m","orchestrator.retro_backfill","--symbol", sym]
-    if ex:
-        cmd += ["--exchange", ex]
-    print("RUN:", " ".join(cmd), flush=True)
-    r = subprocess.run(cmd)
-    if r.returncode != 0:
-        print(f"WARN: backfill failed for {sym}", file=sys.stderr)
-PY
+          python -m orchestrator.run_backfill_batch
 
-      - name: Commit progress (auto-heal)
+      - name: Commit & push progress (auto-heal)
         env:
           CORE_PAT: ${{ secrets.CORE_PAT }}
         run: |
           cd prognostika-core
           git config user.email "bot@prognostika.ai"
-          git config user.name "Prognostika Bot"
+          git config user.name  "Prognostika Bot"
           git fetch origin main
           git checkout main
           git pull https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git main || true
 
-          git add manifests/checkpoints/RETRO_PROGRESS.jsonl manifests/checkpoints/WATERMARKS.jsonl || true
+          git add manifests/checkpoints/RETRO_PROGRESS.jsonl manifests/checkpoints/WATERMARKS.jsonl manifests/stacks/universe_registry.json || true
           git commit -m "[bot] retro progress $(date -u +"%Y-%m-%dT%H:%M:%SZ")" || echo "nothing to commit"
 
           git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main || (
-            echo "⚠️ fast-forward, retrying with rebase"
             git pull --rebase https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git main || true
             git push https://x-access-token:${CORE_PAT}@github.com/AI-Trainings-Model/prognostika-core.git HEAD:main --force
           )
-          echo "✅ retro progress pushed"
