@@ -27,17 +27,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Build plan
+      - name: Build plan (debug + run script)
         run: |
           cd prognostika-core
-          python -m orchestrator.plan_build
+          echo "PWD=$(pwd)"
+          echo "=== ls -la (root) ==="
+          ls -la
+          echo "=== ls -la orchestrator ==="
+          ls -la orchestrator || true
+          echo "=== python -V ==="
+          python -V
+          echo "=== RUN plan_build.py ==="
+          python orchestrator/plan_build.py
 
       - name: Backfill all (by plan)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           cd prognostika-core
-          python -m orchestrator.run_backfill_batch
+          echo "=== RUN run_backfill_batch.py ==="
+          python orchestrator/run_backfill_batch.py
 
       - name: Commit & push progress (auto-heal)
         env:
