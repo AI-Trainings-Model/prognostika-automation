@@ -6,6 +6,9 @@ import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.ImageDecoder;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.RemoteViews;
@@ -15,13 +18,12 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 public class WeatherWidgetProvider extends AppWidgetProvider {
-    private static final String API = "https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.405&current=temperature_2m,apparent_temperature,weather_code&hourly=temperature_2m,precipitation_probability&daily=temperature_2m_max,temperature_2m_min&timezone=Europe%2FBerlin&forecast_days=2";
-
     @Override public void onUpdate(Context context, AppWidgetManager manager, int[] ids) {
         refresh(context, manager, ids);
     }
@@ -34,17 +36,32 @@ public class WeatherWidgetProvider extends AppWidgetProvider {
         for (int id : ids) render(context, manager, id, load(context), manager.getAppWidgetOptions(id));
         new Thread(() -> {
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(API).openConnection();
-                c.setConnectTimeout(12000); c.setReadTimeout(12000);
-                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                StringBuilder sb = new StringBuilder(); String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
-                Weather w = parse(new JSONObject(sb.toString()));
+                String requestedCity = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getString("city", "Berlin");
+                String geoUrl = "https://geocoding-api.open-meteo.com/v1/search?count=1&language=ru&format=json&name=" + URLEncoder.encode(requestedCity, "UTF-8");
+                JSONObject geo = readJson(geoUrl).getJSONArray("results").getJSONObject(0);
+                double lat = geo.getDouble("latitude"), lon = geo.getDouble("longitude");
+                String timezone = geo.getString("timezone");
+                String resolvedCity = geo.getString("name");
+                String api = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon
+                    + "&current=temperature_2m,apparent_temperature,weather_code"
+                    + "&hourly=temperature_2m,precipitation_probability"
+                    + "&daily=temperature_2m_max,temperature_2m_min&timezone=" + URLEncoder.encode(timezone, "UTF-8") + "&forecast_days=2";
+                Weather w = parse(readJson(api));
+                w.city = resolvedCity;
                 save(context, w);
                 for (int id : ids) render(context, manager, id, w, manager.getAppWidgetOptions(id));
             } catch (Exception ignored) { }
         }).start();
+    }
+
+    private static JSONObject readJson(String address) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(address).openConnection();
+        c.setConnectTimeout(12000); c.setReadTimeout(12000);
+        BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+        StringBuilder sb = new StringBuilder(); String line;
+        while ((line = br.readLine()) != null) sb.append(line);
+        br.close();
+        return new JSONObject(sb.toString());
     }
 
     private static Weather parse(JSONObject root) throws Exception {
@@ -52,6 +69,7 @@ public class WeatherWidgetProvider extends AppWidgetProvider {
         JSONObject hourly = root.getJSONObject("hourly");
         JSONObject daily = root.getJSONObject("daily");
         Weather w = new Weather();
+        w.city = "Berlin";
         w.temp = cur.getDouble("temperature_2m");
         w.feels = cur.getDouble("apparent_temperature");
         w.code = cur.getInt("weather_code");
@@ -103,6 +121,7 @@ public class WeatherWidgetProvider extends AppWidgetProvider {
 
     private static void render(Context context, AppWidgetManager manager, int id, Weather w, Bundle options) {
         RemoteViews rv = new RemoteViews(context.getPackageName(), R.layout.widget_weather);
+        rv.setTextViewText(R.id.city, w.city);
         rv.setTextViewText(R.id.temperature, Math.round(w.temp) + "°");
         rv.setTextViewText(R.id.condition, condition(w.code));
         rv.setTextViewText(R.id.action, w.action);
@@ -112,6 +131,17 @@ public class WeatherWidgetProvider extends AppWidgetProvider {
         int height = options == null ? 110 : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110);
         rv.setViewVisibility(R.id.details, width >= 220 ? View.VISIBLE : View.GONE);
         rv.setViewVisibility(R.id.hourly, width >= 220 && height >= 180 ? View.VISIBLE : View.GONE);
+        String photo = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getString("photo", "");
+        if (!photo.isEmpty()) {
+            try {
+                ImageDecoder.Source source = ImageDecoder.createSource(context.getContentResolver(), Uri.parse(photo));
+                Bitmap bitmap = ImageDecoder.decodeBitmap(source, (decoder, info, src) -> decoder.setTargetSize(600, 600));
+                rv.setImageViewBitmap(R.id.character, bitmap);
+                rv.setViewVisibility(R.id.character, View.VISIBLE);
+            } catch (Exception e) {
+                rv.setViewVisibility(R.id.character, View.GONE);
+            }
+        } else rv.setViewVisibility(R.id.character, View.GONE);
         Intent intent = new Intent(context, MainActivity.class);
         rv.setOnClickPendingIntent(R.id.widget_root, PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
         manager.updateAppWidget(id, rv);
@@ -122,18 +152,18 @@ public class WeatherWidgetProvider extends AppWidgetProvider {
             .putFloat("temp",(float)w.temp).putFloat("feels",(float)w.feels)
             .putFloat("min",(float)w.min).putFloat("max",(float)w.max)
             .putInt("code",w.code).putString("action",w.action)
-            .putString("hourly",w.hourly).putString("updated",w.updated).apply();
+            .putString("city",w.city).putString("hourly",w.hourly).putString("updated",w.updated).apply();
     }
 
     private static Weather load(Context c) {
         SharedPreferences p=c.getSharedPreferences("weather", Context.MODE_PRIVATE);
-        Weather w=new Weather(); w.temp=p.getFloat("temp",12); w.feels=p.getFloat("feels",10);
+        Weather w=new Weather(); w.city=p.getString("city","Berlin"); w.temp=p.getFloat("temp",12); w.feels=p.getFloat("feels",10);
         w.min=p.getFloat("min",8); w.max=p.getFloat("max",16); w.code=p.getInt("code",3);
         w.action=p.getString("action","Обновляем прогноз…"); w.hourly=p.getString("hourly","");
         w.updated=p.getString("updated","—"); return w;
     }
 
     private static class Weather {
-        double temp, feels, min, max; int code; String action="", hourly="", updated="—";
+        double temp, feels, min, max; int code; String city="Berlin", action="", hourly="", updated="—";
     }
 }
