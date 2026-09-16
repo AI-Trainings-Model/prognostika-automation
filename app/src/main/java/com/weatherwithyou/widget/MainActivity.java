@@ -13,6 +13,7 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.CheckBox;
 
 public class MainActivity extends Activity {
     private static final int PICK_PHOTO = 42;
@@ -80,7 +81,27 @@ public class MainActivity extends Activity {
             WeatherWidgetProvider.refresh(this, manager, ids);
         });
         box.addView(refresh);
+
+        CheckBox automatic = new CheckBox(this);
+        automatic.setText("Автоматически проверять обновления при запуске");
+        automatic.setTextColor(Color.WHITE);
+        automatic.setChecked(getSharedPreferences("settings", MODE_PRIVATE).getBoolean("auto_update", true));
+        automatic.setOnCheckedChangeListener((button, checked) ->
+            getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("auto_update", checked).apply());
+        box.addView(automatic);
+
+        TextView updateStatus = new TextView(this);
+        updateStatus.setTextColor(Color.LTGRAY);
+        updateStatus.setGravity(Gravity.CENTER);
+        box.addView(updateStatus);
+
+        Button update = new Button(this);
+        update.setText("Проверить обновление с GitHub");
+        update.setOnClickListener(v -> UpdateManager.check(this, updateStatus, true));
+        box.addView(update);
+
         setContentView(box);
+        if (automatic.isChecked()) UpdateManager.check(this, updateStatus, false);
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
