@@ -1,6 +1,0 @@
-<resources>
-    <string name="app_name">Погода с тобой</string>
-    <string name="widget_description">Персональный прогноз и ближайшее полезное действие</string>
-    <string name="widget_title">Погода с тобой</string>
-    <string name="refresh">Обновить</string>
-</resources>
