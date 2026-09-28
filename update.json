@@ -1,8 +1,8 @@
 {
-  "version_code": 19,
-  "version_name": "0.13.0",
-  "apk_url": "https://github.com/AI-Trainings-Model/prognostika-automation/releases/download/v0.13.0/Weather_With_You_0.13.0.apk",
-  "sha256": "a4100f0bfb5859f6e707a693d1634bef122645024c19611836dcdf47ac09ee77",
-  "size_bytes": 127915085,
-  "published_at": "2026-09-20T17:00:05Z"
+  "version_code": 20,
+  "version_name": "0.13.1",
+  "apk_url": "https://github.com/AI-Trainings-Model/prognostika-automation/releases/download/v0.13.1/Weather_With_You_0.13.1.apk",
+  "sha256": "7414835ddd326b81b5b117bc539c79cb33bf50281d36c08d0769fb0112734b25",
+  "size_bytes": 127964225,
+  "published_at": "2026-09-28T08:41:32Z"
 }
